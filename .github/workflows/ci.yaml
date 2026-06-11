@@ -54,6 +54,9 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
       - name: Set package version
         shell: bash
         env:
@@ -62,10 +65,7 @@ jobs:
           test -n "$VERSION"
           sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
           rm -f Cargo.toml.bak
-          cargo update --workspace --offline
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+          cargo update --workspace
 
       - name: Run tests
         run: cargo test --workspace --locked
@@ -94,6 +94,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: darwin-${{ matrix.target }}
+
       - name: Set package version
         shell: bash
         env:
@@ -102,12 +107,7 @@ jobs:
           test -n "$VERSION"
           sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
           rm -f Cargo.toml.bak
-          cargo update --workspace --offline
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: darwin-${{ matrix.target }}
+          cargo update --workspace
 
       - name: Build
         run: cargo build --locked --release --bin meirs --target ${{ matrix.target }}
@@ -147,6 +147,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-${{ matrix.target }}
+
       - name: Set package version
         shell: bash
         env:
@@ -155,12 +160,7 @@ jobs:
           test -n "$VERSION"
           sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
           rm -f Cargo.toml.bak
-          cargo update --workspace --offline
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: windows-${{ matrix.target }}
+          cargo update --workspace
 
       - name: Build
         run: cargo build --locked --release --bin meirs --target ${{ matrix.target }}
@@ -210,6 +210,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-zigbuild-${{ matrix.target }}
+
       - name: Set package version
         shell: bash
         env:
@@ -218,7 +223,7 @@ jobs:
           test -n "$VERSION"
           sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
           rm -f Cargo.toml.bak
-          cargo update --workspace --offline
+          cargo update --workspace
 
       - name: Install Zig
         uses: mlugg/setup-zig@v2
@@ -227,11 +232,6 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-zigbuild
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: linux-zigbuild-${{ matrix.target }}
 
       - name: Zig build
         run: cargo zigbuild --locked --release --bin meirs --target ${{ matrix.target }}

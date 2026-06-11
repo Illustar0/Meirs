@@ -119,7 +119,7 @@ jobs:
           tar -C dist -czf dist/${{ matrix.artifact }}.tar.gz meirs
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.tar.gz
@@ -173,7 +173,7 @@ jobs:
           Compress-Archive -Path "dist/meirs.exe" -DestinationPath "dist/${{ matrix.artifact }}.zip" -Force
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.zip
@@ -243,7 +243,7 @@ jobs:
           tar -C dist -czf dist/${{ matrix.artifact }}.tar.gz meirs
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.tar.gz

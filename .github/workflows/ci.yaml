@@ -1,0 +1,250 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Calculate next version
+        id: version
+        run: |
+          tag="$(npx --yes git-cliff --config cliff.toml --bumped-version)"
+          version="${tag#v}"
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set package version
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          test -n "$VERSION"
+          sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo update --workspace --offline
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --workspace --locked
+
+  darwin-build:
+    name: Build ${{ matrix.target }}
+    runs-on: macos-latest
+    needs: [version, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            artifact: meirs-darwin-x86_64
+          - target: aarch64-apple-darwin
+            artifact: meirs-darwin-aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Set package version
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          test -n "$VERSION"
+          sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo update --workspace --offline
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: darwin-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --locked --release --bin meirs --target ${{ matrix.target }}
+
+      - name: Package artifact
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/meirs dist/meirs
+          tar -C dist -czf dist/${{ matrix.artifact }}.tar.gz meirs
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
+
+  windows-msvc-build:
+    name: Build ${{ matrix.target }}
+    runs-on: windows-latest
+    needs: [version, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            artifact: meirs-windows-x86_64-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Set package version
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          test -n "$VERSION"
+          sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo update --workspace --offline
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --locked --release --bin meirs --target ${{ matrix.target }}
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item "target/${{ matrix.target }}/release/meirs.exe" "dist/meirs.exe"
+          Compress-Archive -Path "dist/meirs.exe" -DestinationPath "dist/${{ matrix.artifact }}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+  linux-zigbuild:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    needs: [version, test]
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            artifact: meirs-linux-x86_64-gnu
+          - target: x86_64-unknown-linux-musl
+            artifact: meirs-linux-x86_64-musl
+          - target: aarch64-unknown-linux-gnu
+            artifact: meirs-linux-aarch64-gnu
+          - target: aarch64-unknown-linux-musl
+            artifact: meirs-linux-aarch64-musl
+          - target: armv7-unknown-linux-musleabihf
+            artifact: meirs-linux-armv7-musleabihf
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Set package version
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          test -n "$VERSION"
+          sed -i.bak -E "s/^version = \"0\.0\.0\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo update --workspace --offline
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-zigbuild-${{ matrix.target }}
+
+      - name: Zig build
+        run: cargo zigbuild --locked --release --bin meirs --target ${{ matrix.target }}
+
+      - name: Package artifact
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/meirs dist/meirs
+          tar -C dist -czf dist/${{ matrix.artifact }}.tar.gz meirs
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error

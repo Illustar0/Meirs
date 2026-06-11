@@ -1,0 +1,21 @@
+[package]
+name = "meirs-cli"
+version.workspace = true
+edition = "2024"
+
+[[bin]]
+name = "meirs"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+directories = "6"
+meirs-core = { path = "../meirs-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tabled = "0.21.0"
+thiserror = "2"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = { version = "2", features = ["serde"] }

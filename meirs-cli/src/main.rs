@@ -104,7 +104,7 @@ struct LoginArgs {
         long,
         value_name = "ACCOUNT",
         value_parser = parse_raw_account,
-        help = "Portal account without ISP suffix, e.g. 2026114514"
+        help = "Portal account without ISP suffix, e.g. 202611451419"
     )]
     account: Option<String>,
     #[arg(
@@ -131,7 +131,7 @@ struct LogoutArgs {
         long,
         value_name = "ACCOUNT",
         value_parser = parse_raw_account,
-        help = "Portal account without ISP suffix, e.g. 2026114514"
+        help = "Portal account without ISP suffix, e.g. 202611451419"
     )]
     account: Option<String>,
     #[arg(

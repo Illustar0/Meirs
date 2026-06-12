@@ -9,4 +9,4 @@ mod eportal_client;
 pub use eportal_client::EPortalClient;
 pub use error::EPortalError;
 pub use model::{IspInfo, PortalInfo};
-pub use utils::{discover_portal_info,check_online};
+pub use utils::{check_online, discover_portal_info};

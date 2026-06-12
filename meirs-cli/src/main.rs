@@ -2,6 +2,7 @@ use std::fs;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::OnceLock;
 
 mod error;
 mod prompt;
@@ -18,12 +19,14 @@ use cliclack::{intro, log, outro, spinner};
 use directories::BaseDirs;
 use meirs_core::{EPortalClient, EPortalError, IspInfo, PortalInfo, discover_portal_info};
 use serde::{Deserialize, Serialize};
+use shadow_rs::shadow;
 use tabled::Table;
 use tabled::settings::Style;
 use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+shadow!(build);
 const STYLES: Styles = Styles::styled()
     .header(AnsiColor::Green.on_default().bold())
     .usage(AnsiColor::Green.on_default().bold())
@@ -36,7 +39,7 @@ const STYLES: Styles = Styles::styled()
 #[derive(Debug, Parser)]
 #[command(
     name = "meirs",
-    version,
+    version = version(),
     about = "An extremely fast network authentication tool for Zhengzhou University.",
     arg_required_else_help = true,
     styles = STYLES,
@@ -199,6 +202,29 @@ fn command_name(command: &Command) -> &'static str {
         Command::Discover(_) => "discover",
         Command::Isp(_) => "isp",
     }
+}
+
+fn version() -> &'static str {
+    static VERSION: OnceLock<String> = OnceLock::new();
+
+    VERSION
+        .get_or_init(|| {
+            format!(
+                "{} ({} {} {})",
+                build::PKG_VERSION,
+                build::SHORT_COMMIT,
+                build_date(),
+                build::BUILD_TARGET
+            )
+        })
+        .as_str()
+}
+
+fn build_date() -> &'static str {
+    build::BUILD_TIME_3339
+        .split_once('T')
+        .map(|(date, _)| date)
+        .unwrap_or(build::BUILD_TIME)
 }
 
 fn capitalize_first(s: &str) -> String {

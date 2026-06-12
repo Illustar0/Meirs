@@ -4,16 +4,22 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 mod error;
+mod prompt;
 
 use crate::error::CliError;
-use clap::builder::styling::AnsiColor;
+use crate::prompt::{
+    ensure_isp_info_available, ensure_login_can_prompt, ensure_logout_can_prompt, prompt_account,
+    prompt_password,
+};
 use clap::builder::Styles;
+use clap::builder::styling::AnsiColor;
 use clap::{ArgAction, Args, Parser, Subcommand};
+use cliclack::{intro, log, outro, spinner};
 use directories::BaseDirs;
-use meirs_core::{discover_portal_info, EPortalClient, EPortalError, IspInfo, PortalInfo};
+use meirs_core::{EPortalClient, EPortalError, IspInfo, PortalInfo, discover_portal_info};
 use serde::{Deserialize, Serialize};
-use tabled::settings::Style;
 use tabled::Table;
+use tabled::settings::Style;
 use tracing::{debug, error, info};
 use tracing_subscriber::EnvFilter;
 use url::Url;
@@ -91,10 +97,14 @@ struct IspListArgs {
 
 #[derive(Debug, Args)]
 struct LoginArgs {
-    #[arg(long, value_name = "ACCOUNT", help = "Portal account")]
-    account: String,
+    #[arg(
+        long,
+        value_name = "ACCOUNT",
+        help = "Portal account, with possible isp suffix, e.g. 2026114514@cmcc"
+    )]
+    account: Option<String>,
     #[arg(long, value_name = "PASSWORD", help = "Portal password")]
-    password: String,
+    password: Option<String>,
     #[arg(long, value_name = "URL", help = "Portal server base URL")]
     portal_url: Option<Url>,
     #[arg(long, value_name = "IP", help = "User IP address")]
@@ -103,11 +113,14 @@ struct LoginArgs {
     local_addr: Option<IpAddr>,
 }
 
-
 #[derive(Debug, Args)]
 struct LogoutArgs {
-    #[arg(long, value_name = "ACCOUNT", help = "Portal account")]
-    account: String,
+    #[arg(
+        long,
+        value_name = "ACCOUNT",
+        help = "Portal account, with possible isp suffix, e.g. 2026114514@cmcc"
+    )]
+    account: Option<String>,
     #[arg(long, value_name = "URL", help = "Portal  server base URL")]
     portal_url: Option<Url>,
     #[arg(long, value_name = "IP", help = "User IP address")]
@@ -188,63 +201,148 @@ fn command_name(command: &Command) -> &'static str {
     }
 }
 
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 fn print_error(error: &CliError) {
     error!(%error, "command failed");
 
     match error {
         CliError::PortalInfoNotFound(path) => {
-            eprintln!("Portal info not found: {}", path.display());
-            eprintln!("Run `meirs discover --save` first, or specify portal info manually.");
+            let _ = log::error(format!("Portal info not found: {}", path.display()));
+            let _ =
+                log::info("Run `meirs discover --save` first, or specify portal info manually.");
         }
-        _ => eprintln!("Error: {error}"),
+        _ => {
+            let _ = log::error(capitalize_first(&error.to_string()));
+        }
     }
+
+    let _ = outro("Wipeout! Please check the error above.");
 }
 
 async fn login(args: LoginArgs) -> Result<(), CliError> {
+    intro("Login")?;
+
+    let LoginArgs {
+        account,
+        password,
+        portal_url,
+        user_ip,
+        local_addr,
+    } = args;
+
+    ensure_login_can_prompt(&account, &password)?;
+
+    let spinner = spinner();
+    spinner.start("Preparing for login...");
+
     info!("starting login command");
     debug!(
-        has_portal_url = args.portal_url.is_some(),
-        has_user_ip = args.user_ip.is_some(),
-        has_local_addr = args.local_addr.is_some(),
+        has_portal_url = portal_url.is_some(),
+        has_user_ip = user_ip.is_some(),
+        has_local_addr = local_addr.is_some(),
         "resolving login portal info"
     );
-
-    let portal_info = resolve_portal_info(args.portal_url, args.user_ip)?;
-    let client = EPortalClient::new(portal_info.server_url, portal_info.user_ip, args.local_addr)
+    let portal_info = resolve_portal_info(portal_url, user_ip)?;
+    let client = EPortalClient::new(portal_info.server_url, portal_info.user_ip, local_addr)
         .map_err(EPortalError::from)?;
-    client.login(&args.account, &args.password).await?;
-    println!("Login completed");
+    spinner.stop("Preparation complete");
+
+    let account = match account {
+        Some(account) => account,
+        None => {
+            let isp_info = client.get_isp_info().await?;
+            prompt_account(&isp_info)?
+        }
+    };
+
+    let password = match password {
+        Some(password) => password,
+        None => prompt_password()?,
+    };
+
+    match client.login(&account, &password).await {
+        Ok(_) => log::success("Logged in")?,
+
+        Err(EPortalError::AlreadyOnline) => log::success(format!(
+            "Login skipped \n IP: {} is already online.",
+            portal_info.user_ip
+        ))?,
+
+        Err(error) => return Err(CliError::from(error)),
+    };
+
+    outro("You're online. Surf the open Internet!")?;
     Ok(())
 }
 
 async fn logout(args: LogoutArgs) -> Result<(), CliError> {
+    intro("Logout")?;
+
+    let LogoutArgs {
+        account,
+        portal_url,
+        user_ip,
+        local_addr,
+    } = args;
+
+    ensure_logout_can_prompt(&account)?;
+
+    let spinner = spinner();
+    spinner.start("Preparing for logout...");
+
     info!("starting logout command");
     debug!(
-        has_portal_url = args.portal_url.is_some(),
-        has_user_ip = args.user_ip.is_some(),
-        has_local_addr = args.local_addr.is_some(),
+        has_portal_url = portal_url.is_some(),
+        has_user_ip = user_ip.is_some(),
+        has_local_addr = local_addr.is_some(),
         "resolving logout portal info"
     );
 
-    let portal_info = resolve_portal_info(args.portal_url, args.user_ip)?;
-    let client = EPortalClient::new(portal_info.server_url, portal_info.user_ip, args.local_addr)
+    let portal_info = resolve_portal_info(portal_url, user_ip)?;
+    let client = EPortalClient::new(portal_info.server_url, portal_info.user_ip, local_addr)
         .map_err(EPortalError::from)?;
-    client.logout(&args.account).await?;
-    println!("Logout completed");
+    spinner.stop("Preparation complete");
+
+    let account = match account {
+        Some(account) => account,
+        None => {
+            let isp_info = client.get_isp_info().await?;
+            prompt_account(&isp_info)?
+        }
+    };
+
+    client.logout(&account).await?;
+    log::success("Logged out")?;
+    outro("Back to shore. See you next time!")?;
     Ok(())
 }
 
 async fn discover(args: DiscoverArgs) -> Result<(), CliError> {
+    intro("Discover")?;
+
     info!(save = args.save, "starting discover command");
 
+    let spin = spinner();
+    spin.start("Discovering portal server...");
     let portal_info = discover_portal_info().await?;
-    print_portal_info(&portal_info);
+    spin.stop("Portal server discovered");
 
+    print_portal_info(&portal_info)?;
     if args.save {
         let path = save_portal_info(&portal_info)?;
-        println!("Saved portal info to {}", path.display());
+        log::info(format!("Saved portal info \n {} ", path.display()))?;
     }
 
+    log::success("Portal discovered")?;
+    outro("Gateway found. Ready to surf!")?;
     Ok(())
 }
 
@@ -256,8 +354,9 @@ async fn isp(args: IspArgs) -> Result<(), CliError> {
     Ok(())
 }
 
-
 async fn list_isp(args: IspListArgs) -> Result<(), CliError> {
+    intro("List ISPs")?;
+
     info!("starting ISP list command");
     debug!(
         has_portal_url = args.portal_url.is_some(),
@@ -265,12 +364,17 @@ async fn list_isp(args: IspListArgs) -> Result<(), CliError> {
         has_local_addr = args.local_addr.is_some(),
         "resolving ISP portal info"
     );
-
+    let spin = spinner();
+    spin.start("Getting ISP info...");
     let portal_info = resolve_portal_info(args.portal_url, args.user_ip)?;
     let client = EPortalClient::new(portal_info.server_url, portal_info.user_ip, args.local_addr)
         .map_err(EPortalError::from)?;
     let isp_info = client.get_isp_info().await?;
-    print_isp_info(&isp_info);
+    spin.stop("ISP info retrieved");
+
+    print_isp_info(&isp_info)?;
+    log::success("ISPs listed")?;
+    outro("Providers on deck.")?;
     Ok(())
 }
 
@@ -337,21 +441,18 @@ fn portal_info_path() -> Result<PathBuf, CliError> {
         .join("portal-info.json"))
 }
 
-fn print_portal_info(info: &PortalInfo) {
-    println!("Portal server discovered");
-    let mut portal_table = Table::new(vec![info]);
+fn print_portal_info(portal_info: &PortalInfo) -> Result<(), CliError> {
+    let mut portal_table = Table::new(vec![portal_info]);
     portal_table.with(Style::modern_rounded());
-    println!("{}", portal_table)
+    Ok(log::info(format!("{}", portal_table))?)
 }
 
-fn print_isp_info(isp_info: &[IspInfo]) {
-    if isp_info.is_empty() {
-        return;
-    }
+fn print_isp_info(isp_info: &[IspInfo]) -> Result<(), CliError> {
+    ensure_isp_info_available(isp_info)?;
 
     let mut isp_info_table = Table::new(isp_info);
-    isp_info_table.with(Style::modern_rounded());
-    println!("{}", isp_info_table);
-    println!("Usage: <account>[suffix]");
-    println!("Example: 2026114514@cmcc");
+    isp_info_table.with(Style::modern());
+    log::info(format!("{}", isp_info_table))?;
+    log::info("Usage: <account>[suffix] \ne.g. 202611451419@cmcc")?;
+    Ok(())
 }

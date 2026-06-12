@@ -13,6 +13,13 @@ meirs discover --save
 Log in and log out:
 
 ```bash
+meirs login
+meirs logout
+```
+
+For scripts or other non-interactive use, pass the required values explicitly:
+
+```bash
 meirs login --account <account> --password <password>
 meirs logout --account <account>
 ```

@@ -8,8 +8,8 @@ mod prompt;
 
 use crate::error::CliError;
 use crate::prompt::{
-    ensure_isp_info_available, ensure_login_can_prompt, prompt_account,
-    prompt_password,
+    ensure_isp_info_available, ensure_login_can_prompt, prompt_account, prompt_password,
+    read_password_stdin,
 };
 use clap::builder::Styles;
 use clap::builder::styling::AnsiColor;
@@ -103,8 +103,8 @@ struct LoginArgs {
         help = "Portal account, with possible isp suffix, e.g. 2026114514@cmcc"
     )]
     account: Option<String>,
-    #[arg(long, value_name = "PASSWORD", help = "Portal password")]
-    password: Option<String>,
+    #[arg(long, help = "Read portal password from standard input")]
+    password_stdin: bool,
     #[arg(long, value_name = "URL", help = "Portal server base URL")]
     portal_url: Option<Url>,
     #[arg(long, value_name = "IP", help = "User IP address")]
@@ -235,13 +235,13 @@ async fn login(args: LoginArgs) -> Result<(), CliError> {
 
     let LoginArgs {
         account,
-        password,
+        password_stdin,
         portal_url,
         user_ip,
         local_addr,
     } = args;
 
-    ensure_login_can_prompt(&account, &password)?;
+    ensure_login_can_prompt(&account, password_stdin)?;
 
     info!("starting login command");
     debug!(
@@ -263,9 +263,10 @@ async fn login(args: LoginArgs) -> Result<(), CliError> {
         }
     };
 
-    let password = match password {
-        Some(password) => password,
-        None => prompt_password()?,
+    let password = if password_stdin {
+        read_password_stdin()?
+    } else {
+        prompt_password()?
     };
 
     let spinner = cliclack::spinner();
@@ -292,12 +293,11 @@ async fn logout(args: LogoutArgs) -> Result<(), CliError> {
     spinner.start("Preparing for logout...");
 
     let LogoutArgs {
-        account,
+        account: _,
         portal_url,
         user_ip,
         local_addr,
     } = args;
-
 
     info!("starting logout command");
     debug!(

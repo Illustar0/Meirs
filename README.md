@@ -20,7 +20,7 @@ meirs logout
 For scripts or other non-interactive use, pass the required values explicitly:
 
 ```bash
-meirs login --account <account> --password <password>
+printf '%s\n' "$MEIRS_PASSWORD" | meirs login --account <account> --password-stdin
 ```
 
 List available ISP suffixes:

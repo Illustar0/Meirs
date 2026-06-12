@@ -1,4 +1,4 @@
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Read};
 
 use cliclack::{input, password, select};
 use meirs_core::IspInfo;
@@ -7,9 +7,9 @@ use crate::error::CliError;
 
 pub(crate) fn ensure_login_can_prompt(
     account: &Option<String>,
-    password: &Option<String>,
+    password_stdin: bool,
 ) -> Result<(), CliError> {
-    let Some(options) = missing_login_options(account, password) else {
+    let Some(options) = missing_login_options(account, password_stdin) else {
         return Ok(());
     };
 
@@ -40,6 +40,12 @@ pub(crate) fn prompt_password() -> Result<String, CliError> {
     Ok(password("Password").mask('▪').interact()?)
 }
 
+pub(crate) fn read_password_stdin() -> Result<String, CliError> {
+    let mut password = String::new();
+    std::io::stdin().read_to_string(&mut password)?;
+    Ok(password.trim_end_matches(['\r', '\n']).to_owned())
+}
+
 pub(crate) fn ensure_isp_info_available(isp_info: &[IspInfo]) -> Result<(), CliError> {
     if isp_info.is_empty() {
         return Err(CliError::IspInfoNotFound);
@@ -48,14 +54,11 @@ pub(crate) fn ensure_isp_info_available(isp_info: &[IspInfo]) -> Result<(), CliE
     Ok(())
 }
 
-fn missing_login_options(
-    account: &Option<String>,
-    password: &Option<String>,
-) -> Option<&'static str> {
-    match (account.is_none(), password.is_none()) {
-        (true, true) => Some("--account and --password"),
+fn missing_login_options(account: &Option<String>, password_stdin: bool) -> Option<&'static str> {
+    match (account.is_none(), !password_stdin) {
+        (true, true) => Some("--account and --password-stdin"),
         (true, false) => Some("--account"),
-        (false, true) => Some("--password"),
+        (false, true) => Some("--password-stdin"),
         (false, false) => None,
     }
 }

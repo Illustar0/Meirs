@@ -22,6 +22,7 @@ static A41_JS_PATTERN: LazyLock<Regex> =
 pub(crate) fn portal_client_builder() -> ClientBuilder {
     Client::builder()
         .connect_timeout(PORTAL_CONNECT_TIMEOUT)
+        .tls_danger_accept_invalid_certs(true)
         .timeout(PORTAL_REQUEST_TIMEOUT)
 }
 

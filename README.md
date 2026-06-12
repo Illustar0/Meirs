@@ -21,7 +21,6 @@ For scripts or other non-interactive use, pass the required values explicitly:
 
 ```bash
 meirs login --account <account> --password <password>
-meirs logout --account <account>
 ```
 
 List available ISP suffixes:

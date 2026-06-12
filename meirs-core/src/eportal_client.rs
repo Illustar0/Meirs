@@ -110,7 +110,7 @@ impl EPortalClient {
         Ok(())
     }
 
-    pub async fn logout(&self, account: &str) -> Result<(), EPortalError> {
+    pub async fn logout(&self, account: Option<&str>) -> Result<(), EPortalError> {
         info!(user_ip = %self.user_ip, ?self.local_address, "sending logout request");
 
         let v = rand::random_range(500..15000);
@@ -120,11 +120,17 @@ impl EPortalClient {
             .expect("joining url should never fail");
         debug!(%url, "prepared logout request");
 
-        let params = [
+        let mut params = vec![
             // 实际上 callback 不重要，JsonP 回调用的
             ("callback", "dr1003".to_string()),
             ("unbind_type", "1".to_string()),
-            ("user_account", format!(",0,{account}")),
+        ];
+
+        if let Some(account) = account {
+            params.push(("user_account", format!(",0,{account}")));
+        }
+
+        params.extend([
             ("wlan_user_ip", self.user_ip.to_string()),
             ("wlan_user_ipv6", "".to_string()),
             ("wlan_user_mac", "000000000000".to_string()),
@@ -136,7 +142,7 @@ impl EPortalClient {
             ("terminal_type", "3".to_string()),
             ("lang", "zh".to_string()),
             ("v", v.to_string()),
-        ];
+        ]);
         let response_text = self
             .client
             .get(url)

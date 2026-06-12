@@ -8,7 +8,7 @@ mod prompt;
 
 use crate::error::CliError;
 use crate::prompt::{
-    ensure_isp_info_available, ensure_login_can_prompt, ensure_logout_can_prompt, prompt_account,
+    ensure_isp_info_available, ensure_login_can_prompt, prompt_account,
     prompt_password,
 };
 use clap::builder::Styles;
@@ -230,6 +230,9 @@ fn print_error(error: &CliError) {
 async fn login(args: LoginArgs) -> Result<(), CliError> {
     intro("Login")?;
 
+    let spinner = spinner();
+    spinner.start("Preparing for login...");
+
     let LoginArgs {
         account,
         password,
@@ -239,9 +242,6 @@ async fn login(args: LoginArgs) -> Result<(), CliError> {
     } = args;
 
     ensure_login_can_prompt(&account, &password)?;
-
-    let spinner = spinner();
-    spinner.start("Preparing for login...");
 
     info!("starting login command");
     debug!(
@@ -268,13 +268,15 @@ async fn login(args: LoginArgs) -> Result<(), CliError> {
         None => prompt_password()?,
     };
 
+    let spinner = cliclack::spinner();
+    spinner.start("Logging in...");
     match client.login(&account, &password).await {
-        Ok(_) => log::success("Logged in")?,
+        Ok(_) => spinner.stop("Logged in"),
 
-        Err(EPortalError::AlreadyOnline) => log::success(format!(
-            "Login skipped \n IP: {} is already online.",
+        Err(EPortalError::AlreadyOnline) => spinner.stop(format!(
+            "Login skipped \nIP: {} is already online.",
             portal_info.user_ip
-        ))?,
+        )),
 
         Err(error) => return Err(CliError::from(error)),
     };
@@ -286,6 +288,9 @@ async fn login(args: LoginArgs) -> Result<(), CliError> {
 async fn logout(args: LogoutArgs) -> Result<(), CliError> {
     intro("Logout")?;
 
+    let spinner = spinner();
+    spinner.start("Preparing for logout...");
+
     let LogoutArgs {
         account,
         portal_url,
@@ -293,10 +298,6 @@ async fn logout(args: LogoutArgs) -> Result<(), CliError> {
         local_addr,
     } = args;
 
-    ensure_logout_can_prompt(&account)?;
-
-    let spinner = spinner();
-    spinner.start("Preparing for logout...");
 
     info!("starting logout command");
     debug!(
@@ -311,16 +312,18 @@ async fn logout(args: LogoutArgs) -> Result<(), CliError> {
         .map_err(EPortalError::from)?;
     spinner.stop("Preparation complete");
 
-    let account = match account {
-        Some(account) => account,
-        None => {
-            let isp_info = client.get_isp_info().await?;
-            prompt_account(&isp_info)?
-        }
-    };
+    //let account = match account {
+    //    Some(account) => account,
+    //    None => {
+    //        let isp_info = client.get_isp_info().await?;
+    //        prompt_account(&isp_info)?
+    //    }
+    //};
+    let spinner = cliclack::spinner();
+    spinner.start("Logging out...");
+    client.logout(None).await?;
+    spinner.stop("Logged out");
 
-    client.logout(&account).await?;
-    log::success("Logged out")?;
     outro("Back to shore. See you next time!")?;
     Ok(())
 }
@@ -336,12 +339,13 @@ async fn discover(args: DiscoverArgs) -> Result<(), CliError> {
     spin.stop("Portal server discovered");
 
     print_portal_info(&portal_info)?;
-    if args.save {
-        let path = save_portal_info(&portal_info)?;
-        log::info(format!("Saved portal info \n {} ", path.display()))?;
-    }
 
     log::success("Portal discovered")?;
+    if args.save {
+        let path = save_portal_info(&portal_info)?;
+        log::info(format!("Saved portal info \n{} ", path.display()))?;
+    }
+
     outro("Gateway found. Ready to surf!")?;
     Ok(())
 }
@@ -443,7 +447,7 @@ fn portal_info_path() -> Result<PathBuf, CliError> {
 
 fn print_portal_info(portal_info: &PortalInfo) -> Result<(), CliError> {
     let mut portal_table = Table::new(vec![portal_info]);
-    portal_table.with(Style::modern_rounded());
+    portal_table.with(Style::modern());
     Ok(log::info(format!("{}", portal_table))?)
 }
 

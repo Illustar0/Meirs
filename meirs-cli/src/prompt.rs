@@ -16,14 +16,6 @@ pub(crate) fn ensure_login_can_prompt(
     require_prompt_terminal("login", options)
 }
 
-pub(crate) fn ensure_logout_can_prompt(account: &Option<String>) -> Result<(), CliError> {
-    if account.is_some() {
-        return Ok(());
-    }
-
-    require_prompt_terminal("logout", "--account")
-}
-
 pub(crate) fn prompt_account(isp_info: &[IspInfo]) -> Result<String, CliError> {
     ensure_isp_info_available(isp_info)?;
 

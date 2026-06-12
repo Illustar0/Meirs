@@ -71,7 +71,7 @@ fn require_prompt_terminal(command: &'static str, options: &'static str) -> Resu
     Err(CliError::NonInteractiveMissingOptions { command, options })
 }
 
-fn validate_raw_account(input: &str) -> Result<(), &'static str> {
+pub(crate) fn validate_raw_account(input: &str) -> Result<(), &'static str> {
     if input.contains('@') {
         Err("Enter account only, without ISP suffix")
     } else if input.is_empty() {

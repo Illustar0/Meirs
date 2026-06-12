@@ -10,7 +10,7 @@ mod prompt;
 use crate::error::CliError;
 use crate::prompt::{
     ensure_isp_info_available, ensure_login_can_prompt, prompt_account, prompt_password,
-    read_password_stdin,
+    read_password_stdin, validate_raw_account,
 };
 use clap::builder::Styles;
 use clap::builder::styling::AnsiColor;
@@ -103,9 +103,18 @@ struct LoginArgs {
     #[arg(
         long,
         value_name = "ACCOUNT",
-        help = "Portal account, with possible isp suffix, e.g. 2026114514@cmcc"
+        value_parser = parse_raw_account,
+        help = "Portal account without ISP suffix, e.g. 2026114514"
     )]
     account: Option<String>,
+    #[arg(
+        long,
+        value_name = "SUFFIX",
+        value_parser = parse_isp_suffix,
+        requires = "account",
+        help = "Optional portal ISP suffix, e.g. @cmcc"
+    )]
+    isp_suffix: Option<String>,
     #[arg(long, help = "Read portal password from standard input")]
     password_stdin: bool,
     #[arg(long, value_name = "URL", help = "Portal server base URL")]
@@ -121,9 +130,18 @@ struct LogoutArgs {
     #[arg(
         long,
         value_name = "ACCOUNT",
-        help = "Portal account, with possible isp suffix, e.g. 2026114514@cmcc"
+        value_parser = parse_raw_account,
+        help = "Portal account without ISP suffix, e.g. 2026114514"
     )]
     account: Option<String>,
+    #[arg(
+        long,
+        value_name = "SUFFIX",
+        value_parser = parse_isp_suffix,
+        requires = "account",
+        help = "Optional portal ISP suffix, e.g. @cmcc"
+    )]
+    isp_suffix: Option<String>,
     #[arg(long, value_name = "URL", help = "Portal  server base URL")]
     portal_url: Option<Url>,
     #[arg(long, value_name = "IP", help = "User IP address")]
@@ -227,6 +245,33 @@ fn build_date() -> &'static str {
         .unwrap_or(build::BUILD_TIME)
 }
 
+fn parse_raw_account(value: &str) -> Result<String, String> {
+    validate_raw_account(value)
+        .map(|()| value.to_owned())
+        .map_err(str::to_owned)
+}
+
+fn parse_isp_suffix(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        Err("ISP suffix cannot be empty".to_owned())
+    } else if !value.starts_with('@') {
+        Err("ISP suffix must start with @, e.g. @cmcc".to_owned())
+    } else if value.len() == 1 {
+        Err("ISP suffix must include a provider after @, e.g. @cmcc".to_owned())
+    } else if value.chars().any(char::is_whitespace) {
+        Err("ISP suffix must not contain whitespace".to_owned())
+    } else {
+        Ok(value.to_owned())
+    }
+}
+
+fn portal_account(account: String, isp_suffix: Option<String>) -> String {
+    match isp_suffix {
+        Some(isp_suffix) => account + &isp_suffix,
+        None => account,
+    }
+}
+
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
 
@@ -261,6 +306,7 @@ async fn login(args: LoginArgs) -> Result<(), CliError> {
 
     let LoginArgs {
         account,
+        isp_suffix,
         password_stdin,
         portal_url,
         user_ip,
@@ -282,7 +328,7 @@ async fn login(args: LoginArgs) -> Result<(), CliError> {
     spinner.stop("Preparation complete");
 
     let account = match account {
-        Some(account) => account,
+        Some(account) => portal_account(account, isp_suffix),
         None => {
             let isp_info = client.get_isp_info().await?;
             prompt_account(&isp_info)?
@@ -320,6 +366,7 @@ async fn logout(args: LogoutArgs) -> Result<(), CliError> {
 
     let LogoutArgs {
         account: _,
+        isp_suffix: _,
         portal_url,
         user_ip,
         local_addr,
@@ -483,6 +530,6 @@ fn print_isp_info(isp_info: &[IspInfo]) -> Result<(), CliError> {
     let mut isp_info_table = Table::new(isp_info);
     isp_info_table.with(Style::modern());
     log::info(format!("{}", isp_info_table))?;
-    log::info("Usage: <account>[suffix] \ne.g. 202611451419@cmcc")?;
+    log::info("Usage: meirs login --account <account> [--isp-suffix <suffix>]")?;
     Ok(())
 }

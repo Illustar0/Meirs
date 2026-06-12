@@ -23,6 +23,8 @@ For scripts or other non-interactive use, pass the required values explicitly:
 printf '%s\n' "$MEIRS_PASSWORD" | meirs login --account <account> --password-stdin
 ```
 
+For ISP login, add `--isp-suffix <isp-suffix>`.
+
 List available ISP suffixes:
 
 ```bash
